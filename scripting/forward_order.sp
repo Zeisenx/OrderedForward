@@ -3,7 +3,6 @@
 
 Handle g_fwOnReady;
 Handle g_fwOnReadyPost;
-Handle g_fwOnCallForward;
 
 enum struct PLInfo
 {
@@ -17,6 +16,7 @@ enum struct ForwardInfo
 	Handle owner;
 	char name[128];
 	ArrayList pluginList;
+	PrivateForward fw;
 	KeyValues orderKV;
 	
 	void Init(KeyValues kv)
@@ -60,20 +60,6 @@ methodmap ForwardList < ArrayList
 		
 		return -1;
 	}
-	public void CallForward(const char[] name)
-	{
-		ForwardInfo forwardInfo;
-		this.FindForward(name, forwardInfo, sizeof(forwardInfo));
-		
-		int len = forwardInfo.pluginList.Length;
-		for (int i=0; i<len; i++) {
-			PLInfo info;
-			forwardInfo.pluginList.GetArray(i, info, sizeof(info));
-			
-			// Call_StartFunction(info.plugin, info.func);
-			// Call_Finish();
-		}
-	}
 	public void Reorder()
 	{	
 		ForwardInfo forwardInfo;
@@ -94,6 +80,23 @@ methodmap ForwardList < ArrayList
 			
 			this.SetArray(f, forwardInfo, sizeof(forwardInfo));
 		}
+		
+		for (int f=0; f<this.Length; f++) {
+			this.GetArray(f, forwardInfo, sizeof(forwardInfo));
+			
+			PLInfo info;
+			
+			int len = forwardInfo.pluginList.Length;
+			for (int i=0; i<len; i++) {
+				forwardInfo.pluginList.GetArray(i, info, sizeof(PLInfo));
+				forwardInfo.fw.AddFunction(info.plugin, info.func);
+			}
+			
+			for (int i=0; i<len; i++) {
+				forwardInfo.pluginList.GetArray(i, info, sizeof(PLInfo));
+				forwardInfo.fw.RemoveFunction(info.plugin, info.func);
+			}
+		}
 	}
 }
 ForwardList g_forwardList;
@@ -102,12 +105,9 @@ public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max
 {
 	CreateNative("FO_AddForward", Native_AddForward);
 	CreateNative("FO_AddPlugin", Native_AddPlugin);
-	CreateNative("FO_CallForward", Native_CallForward);
 	
 	g_fwOnReady = CreateGlobalForward("FO_OnReady", ET_Ignore);
 	g_fwOnReadyPost = CreateGlobalForward("FO_OnReadyPost", ET_Ignore);
-	
-	g_fwOnCallForward = CreateGlobalForward("FO_OnCallForward", ET_Ignore);
 	
 	return APLRes_Success;
 }
@@ -128,14 +128,16 @@ public void OnAllPluginsLoaded()
 	g_forwardList.Reorder();
 }
 
-//FO_AddForward(const char[] name, KeyValues kv)
+//FO_AddForward(const char[] name, PrivateForward forward, KeyValues kv)
 public int Native_AddForward(Handle plugin, int numParams)
 {
 	ForwardInfo info;
-	KeyValues kv = GetNativeCell(2);
+	PrivateForward fw = GetNativeCell(2);
+	KeyValues kv = GetNativeCell(3);
 	
 	GetNativeString(1, info.name, sizeof(ForwardInfo::name));
 	info.owner = plugin;
+	info.fw = fw;
 	info.Init(kv);
 	
 	g_forwardList.PushArray(info, sizeof(ForwardInfo));
@@ -159,11 +161,5 @@ public int Native_AddPlugin(Handle plugin, int numParams)
 	GetPluginFilename(plugin, info.name, sizeof(info.name));
 	forwardInfo.AddPlugin(info);
 	
-	return 0;
-}
-
-public int Native_CallForward(Handle plugin, int numParams)
-{
-
 	return 0;
 }
