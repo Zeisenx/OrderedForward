@@ -1,5 +1,5 @@
 # OrderedForward
-Sourcemod Forward isn't guaranteed, this plugin manages forward with ordered by config.
+Sourcemod Forward ordering isn't guaranteed, this plugin manages forward with ordered by config.
 
 Config for example
 ```json
