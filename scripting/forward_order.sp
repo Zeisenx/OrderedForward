@@ -1,6 +1,7 @@
 
 #include <sourcemod>
 
+bool g_lateLoad;
 Handle g_fwOnReady;
 Handle g_fwOnReadyPost;
 
@@ -39,6 +40,7 @@ enum struct ForwardInfo
 		char buffer[128];
 		Format(buffer, sizeof(buffer), "%s/rank", plInfo.name);
 		plInfo.rank = this.orderKV.GetNum(buffer, 9999);
+		
 		this.pluginList.PushArray(plInfo, sizeof(plInfo));
 	}
 }
@@ -48,13 +50,25 @@ methodmap ForwardList < ArrayList
 	{
 		return view_as<ForwardList>(new ArrayList(sizeof(ForwardInfo)));
 	}
-	public int FindForward(const char[] name, ForwardInfo info)
+	public int FindForward(PrivateForward fw, ForwardInfo info)
 	{
 		int len = this.Length;
 		for (int i=0; i<len; i++) {
 			this.GetArray(i, info, sizeof(info));
 			
-			if (StrEqual(info.name, name))
+			if (info.fw == fw)
+				return i;
+		}
+		
+		return -1;
+	}
+	public int FindForwardByKey(const char[] keyName, ForwardInfo info)
+	{
+		int len = this.Length;
+		for (int i=0; i<len; i++) {
+			this.GetArray(i, info, sizeof(info));
+			
+			if (StrEqual(info.name, keyName))
 				return i;
 		}
 		
@@ -69,12 +83,13 @@ methodmap ForwardList < ArrayList
 			PLInfo info1, info2;
 			
 			int len = forwardInfo.pluginList.Length;
-			for (int i=0; i<len-1; i++) {
+			for (int i=0; i<len; i++) {
 				forwardInfo.pluginList.GetArray(i, info1, sizeof(PLInfo));
-				for (int k=1; k<len; k++) {
+				for (int k=0; k<len; k++) {
 					forwardInfo.pluginList.GetArray(k, info2, sizeof(PLInfo));
-					if (info1.rank > info2.rank)
+					if (info1.rank < info2.rank) {
 						forwardInfo.pluginList.SwapAt(i, k);
+					}
 				}
 			}
 			
@@ -89,12 +104,12 @@ methodmap ForwardList < ArrayList
 			int len = forwardInfo.pluginList.Length;
 			for (int i=0; i<len; i++) {
 				forwardInfo.pluginList.GetArray(i, info, sizeof(PLInfo));
-				forwardInfo.fw.AddFunction(info.plugin, info.func);
+				forwardInfo.fw.RemoveFunction(info.plugin, info.func);
 			}
 			
 			for (int i=0; i<len; i++) {
 				forwardInfo.pluginList.GetArray(i, info, sizeof(PLInfo));
-				forwardInfo.fw.RemoveFunction(info.plugin, info.func);
+				forwardInfo.fw.AddFunction(info.plugin, info.func);
 			}
 		}
 	}
@@ -103,11 +118,17 @@ ForwardList g_forwardList;
 
 public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max)
 {
-	CreateNative("FO_AddForward", Native_AddForward);
-	CreateNative("FO_AddPlugin", Native_AddPlugin);
+	RegPluginLibrary("forward_order");
+	
+	CreateNative("OrderForward.OrderForward", Native_OrderForward);
+	CreateNative("OrderForward.fw.get", Native_PrivateForward_Get);
+	CreateNative("OrderForward.RequestFunc", Native_AddPlugin);
+	CreateNative("FO_FindForward", Native_FindForward);
 	
 	g_fwOnReady = CreateGlobalForward("FO_OnReady", ET_Ignore);
 	g_fwOnReadyPost = CreateGlobalForward("FO_OnReadyPost", ET_Ignore);
+	
+	g_lateLoad = late;
 	
 	return APLRes_Success;
 }
@@ -128,32 +149,39 @@ public void OnAllPluginsLoaded()
 	g_forwardList.Reorder();
 }
 
-//FO_AddForward(const char[] name, PrivateForward forward, KeyValues kv)
-public int Native_AddForward(Handle plugin, int numParams)
+public int Native_OrderForward(Handle plugin, int numParams)
 {
 	ForwardInfo info;
-	PrivateForward fw = GetNativeCell(2);
-	KeyValues kv = GetNativeCell(3);
+	PrivateForward fw = GetNativeCell(1);
+	GetNativeString(2, info.name, sizeof(ForwardInfo::name));
+	KeyValues orderKV = GetNativeCell(3);
 	
-	GetNativeString(1, info.name, sizeof(ForwardInfo::name));
 	info.owner = plugin;
 	info.fw = fw;
-	info.Init(kv);
+	info.Init(orderKV);
 	
 	g_forwardList.PushArray(info, sizeof(ForwardInfo));
 	
-	return 0;
+	return GetNativeCell(1);
 }
 
-//FO_AddPlugin(const char forwardName[], Function func);
+public int Native_PrivateForward_Get(Handle plugin, int numParams)
+{
+	PrivateForward fw = GetNativeCell(1);
+	
+	ForwardInfo forwardInfo;
+	int idx = g_forwardList.FindForward(fw , forwardInfo);
+	
+	return view_as<int>(forwardInfo.fw);
+}
+
 public int Native_AddPlugin(Handle plugin, int numParams)
 {
-	char forwardName[128];
-	GetNativeString(1, forwardName, sizeof(forwardName));
+	PrivateForward fw = GetNativeCell(1);
 	Function func = GetNativeFunction(2);
 	
 	ForwardInfo forwardInfo;
-	g_forwardList.FindForward(forwardName, forwardInfo);
+	int idx = g_forwardList.FindForward(fw, forwardInfo);
 	
 	PLInfo info;
 	info.plugin = plugin;
@@ -161,5 +189,18 @@ public int Native_AddPlugin(Handle plugin, int numParams)
 	GetPluginFilename(plugin, info.name, sizeof(info.name));
 	forwardInfo.AddPlugin(info);
 	
+	g_forwardList.SetArray(idx, forwardInfo, sizeof(forwardInfo));
+	
 	return 0;
+}
+
+public int Native_FindForward(Handle plugin, int numParams)
+{
+	char keyName[128];
+	GetNativeString(1, keyName, sizeof(keyName));
+	
+	ForwardInfo forwardInfo;
+	g_forwardList.FindForwardByKey(keyName, forwardInfo);
+	
+	return view_as<int>(forwardInfo.fw);
 }

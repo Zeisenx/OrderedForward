@@ -4,8 +4,18 @@
 #endif
 #define _forward_order_included_
 
-native void FO_AddForward(const char[] name, PrivateForward fw, KeyValues kv)
-native void FO_AddPlugin(const char fwName[], Function func);
+methodmap OrderForward __nullable__
+{
+	public native OrderForward(PrivateForward fw, const char[] keyName, KeyValues orderKV);
+	
+	property PrivateForward fw {
+		public native get();
+	}
+	
+	public native void RequestFunc(Function func);
+}
+
+native OrderForward FO_FindForward(const char[] keyName);
 
 forward void FO_OnReady();
 forward void FO_OnReadyPost();
