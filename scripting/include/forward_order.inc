@@ -34,7 +34,6 @@ public SharedPlugin __pl_forward_order =
 #if !defined REQUIRE_PLUGIN
 public void __pl_forward_order_SetNTVOptional()
 {
-	MarkNativeAsOptional("FO_AddForward");
-	MarkNativeAsOptional("FO_AddPlugin");
+	MarkNativeAsOptional("FO_FindForward");
 }
 #endif
